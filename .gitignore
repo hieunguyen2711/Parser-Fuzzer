@@ -1,0 +1,22 @@
+# Secrets
+.env
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.hypothesis/
+
+# Build outputs
+build/*
+!build/README.md
+*.o
+*.dSYM/
+
+# Cloned target sources (re-clone at the pinned commit instead of committing them)
+target/*
+!target/README.md
+
+# macOS
+.DS_Store
