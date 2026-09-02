@@ -33,11 +33,16 @@ antlr4 -o OUT -lib OUT/grammar XMLmxmlParser.g4
 
 Generating them together fails with `cannot find tokens file`, and upstream's
 own grammar fails identically, so it is a build-order issue rather than a
-grammar defect.
+grammar defect. `make grammar-check` handles the ordering for you.
 
 ---
 
 ## Verification
+
+Reproduce with **`make grammar-check`** — it downloads the ANTLR tool into
+`build/`, regenerates both parsers, compiles the acceptance probe against the
+pinned mxml, runs the comparison, and exits nonzero if the adaptation stops
+matching the library.
 
 All three columns run against the same documents: derivable from upstream,
 derivable from the adaptation, accepted by mxml itself. The third column is

@@ -5,21 +5,17 @@ grammars-v4 XML grammar, derivable from the mxml-adapted grammar, and accepted
 by mxml itself. The third column is the ground truth; the first two are models
 of it, and every disagreement is a documented gap.
 
-Not part of the pytest suite: it needs the ANTLR tool (a Java jar), generated
-parsers, and a compiled mxml probe. Run it by hand when the analysis needs
-re-checking -- notably if the assignment pins an mxml version other than
-v4.0.5.
+Run it with:
 
-    SP=$(mktemp -d)
-    # 1. generated parsers (lexer first; the parser needs its .tokens)
-    java -jar antlr.jar -o "$SP/up" -Dlanguage=Python3 grammar/XMLLexer.g4
-    java -jar antlr.jar -o "$SP/up" -lib "$SP/up/grammar" -Dlanguage=Python3 grammar/XMLParser.g4
-    java -jar antlr.jar -o "$SP/ad" -Dlanguage=Python3 grammar/XMLmxmlLexer.g4
-    java -jar antlr.jar -o "$SP/ad" -lib "$SP/ad/grammar" -Dlanguage=Python3 grammar/XMLmxmlParser.g4
-    # 2. the acceptance probe, from a configured mxml tree
-    clang -std=c17 -Itarget/mxml -o "$SP/probe" grammar/probe_mxml.c target/mxml/mxml-*.c
-    # 3. run
-    python3 grammar/compare_grammars.py "$SP/up/grammar" "$SP/ad/grammar" "$SP/probe"
+    make grammar-check
+
+which downloads the ANTLR tool, regenerates both parsers, builds the mxml
+acceptance probe, and invokes this script with the right paths. Kept out of
+the pytest suite because it needs java and a ~2MB jar, neither of which
+belongs in the fuzzing loop's dependencies.
+
+Arguments, if invoking directly: <upstream-parser-dir> <adapted-parser-dir>
+<path-to-probe>.
 """
 
 import subprocess

@@ -55,7 +55,7 @@ SRC := harness/harness.c harness/fuzz_target.c
 MOCK_BIN := $(BUILD)/harness-mock
 MOCK_SRC := harness/harness.c tests/mock_target.c
 
-.PHONY: all mock clean distclean
+.PHONY: all mock clean distclean grammar-check
 
 all: $(BIN)
 
@@ -78,6 +78,43 @@ clean:
 	rm -rf $(BUILD)/harness $(BUILD)/harness.dSYM \
 	  $(BUILD)/harness-mock $(BUILD)/harness-mock.dSYM
 
+# ---------------------------------------------------------------------------
+# grammar-check -- regenerate the ANTLR parsers and re-run the three-way
+# comparison in grammar/README.md (upstream grammar vs adaptation vs mxml).
+#
+# Everything it needs is downloaded or built into $(BUILD), so the check is
+# reproducible from a clean clone rather than depending on whatever happened
+# to be in a scratch directory. Needs network on first run (for the jar) and
+# java on PATH. Exits nonzero if the adaptation stops matching mxml.
+# ---------------------------------------------------------------------------
+ANTLR_VERSION := 4.13.2
+ANTLR_JAR := $(BUILD)/antlr-$(ANTLR_VERSION)-complete.jar
+ANTLR_URL := https://www.antlr.org/download/antlr-$(ANTLR_VERSION)-complete.jar
+GEN := $(BUILD)/antlr
+PROBE := $(BUILD)/probe-mxml
+PYTHON ?= .venv/bin/python
+
+grammar-check: $(ANTLR_JAR) $(PROBE)
+	@rm -rf $(GEN)
+	@mkdir -p $(GEN)/up $(GEN)/ad
+	# The parser grammar needs the lexer's .tokens file, so the lexer must be
+	# generated first and its output directory passed via -lib. Generating both
+	# in one invocation fails -- upstream's own grammar included.
+	java -jar $(ANTLR_JAR) -o $(GEN)/up -Dlanguage=Python3 grammar/XMLLexer.g4
+	java -jar $(ANTLR_JAR) -o $(GEN)/up -lib $(GEN)/up/grammar -Dlanguage=Python3 grammar/XMLParser.g4
+	java -jar $(ANTLR_JAR) -o $(GEN)/ad -Dlanguage=Python3 grammar/XMLmxmlLexer.g4
+	java -jar $(ANTLR_JAR) -o $(GEN)/ad -lib $(GEN)/ad/grammar -Dlanguage=Python3 grammar/XMLmxmlParser.g4
+	$(PYTHON) grammar/compare_grammars.py $(GEN)/up/grammar $(GEN)/ad/grammar $(PROBE)
+
+$(ANTLR_JAR): | $(BUILD)
+	curl -fsSL --max-time 120 -o $@ $(ANTLR_URL)
+
+# The acceptance oracle. Built without sanitizers on purpose: it answers
+# "does mxml accept this document", and a sanitizer abort would be reported
+# as a rejection, quietly corrupting the comparison table.
+$(PROBE): grammar/probe_mxml.c $(TARGET_SRC) $(MXML_CONF)/config.h | $(BUILD)
+	$(CC) -std=c17 -g -O1 $(TARGET_INC) -o $@ grammar/probe_mxml.c $(TARGET_SRC)
+
 # Also drops the generated mxml config; use when changing pinned versions.
 distclean: clean
-	rm -rf $(MXML_CONF)
+	rm -rf $(MXML_CONF) $(GEN) $(PROBE) $(ANTLR_JAR)
