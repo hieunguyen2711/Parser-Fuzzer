@@ -1,0 +1,32 @@
+XMLLexer.g4 / XMLParser.g4
+  Source    : https://github.com/antlr/grammars-v4/tree/master/xml
+  Retrieved : 2026-09-01
+  Last upstream change to both files:
+              753536777d827ccc0c9b108531ea67375c2039ac
+              "Reformatting all grammars (#3843)", Mike Lischke, 2023-11-29
+  License   : BSD (retained verbatim in the file headers)
+  Modified  : No. Vendored byte-for-byte. All adaptations live in
+              XMLmxmlLexer.g4 / XMLmxmlParser.g4 so the originals stay
+              auditable.
+  Note      : XML is split into separate lexer and parser grammars upstream,
+              unlike the single combined grammar most formats get. The split
+              is forced by lexer MODES (DEFAULT / INSIDE / PROC_INSTR), which
+              ANTLR permits only in a pure lexer grammar. The adaptation keeps
+              the same split for the same reason.
+
+mxml (the target library)
+  Source    : https://github.com/michaelrsweet/mxml
+  Pinned at : 18d5c7dd9c71ebc1d3f21fe1e0614300babdda84
+              tag v4.0.5, "Prep for release."
+  Cloned to : target/mxml (detached HEAD, working tree clean)
+  CAVEAT    : v4.0.5 is the latest release tag and was chosen by me, NOT
+              confirmed against the assignment's pinned commit, which has not
+              been provided. mxml 4.x is an API rewrite of 3.x -- mxmlLoadString
+              gained an mxml_options_t parameter -- so if the assignment pins a
+              3.x version, the harness seam changes shape and this analysis
+              needs redoing, not just re-checking.
+
+Behavioral claims
+  Every [PROBE] claim in README.md was produced by compiling mxml at the commit
+  above and running probe_mxml.c against the input shown. They are observed,
+  not inferred. Claims marked [SRC] cite mxml-file.c and were read, not run.

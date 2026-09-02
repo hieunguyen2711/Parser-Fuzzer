@@ -1,0 +1,31 @@
+CSV.g4
+  Source    : https://github.com/antlr/grammars-v4/blob/master/csv/CSV.g4
+  Retrieved : 2026-09-01
+  Last upstream change to this file:
+              753536777d827ccc0c9b108531ea67375c2039ac
+              "Reformatting all grammars (#3843)", Mike Lischke, 2023-11-29
+  Author    : Terence Parr (from "The Definitive ANTLR 4 Reference")
+  License   : BSD 3-clause (retained verbatim in the file header)
+  Modified  : No. Vendored byte-for-byte. All adaptations live in
+              CSVlibcsv.g4 so the upstream original stays auditable.
+
+libcsv (behavioral reference for the gap analysis)
+  Source    : https://github.com/rgamble/libcsv
+  Read at   : b1d5212831842ee5869d99bc208a21837e4037d5
+              (master HEAD as of 2026-09-01; committed 2021-08-20 by
+              Robert Gamble, "Update README to reference package management")
+  Version   : 3.0.3, per CSV_MAJOR/CSV_MINOR/CSV_RELEASE in csv.h
+              The repository carries no git tags, so these macros are the
+              only version identifier available.
+  Files read: libcsv.c  blob ed0d28aacf8c9a3257d999e3041bbec8940684bf
+              csv.h     blob d449760fbd3c6de29ead0f33577affb84bbfbe86
+              Both verified byte-identical to the blobs recorded at the
+              commit above (git hash-object vs the GitHub tree API).
+  Nothing was cloned into target/ -- these two files were read over HTTP
+  into a scratch directory for the gap analysis only.
+
+  CAVEAT    : this is upstream HEAD, chosen by me, NOT the commit assigned
+              for the coursework, which has not been provided. Master has not
+              moved since 2021, so the risk of drift is low, but if the
+              assigned commit differs, every claim tagged [SRC] in README.md
+              must be re-checked against that tree.
