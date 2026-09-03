@@ -33,6 +33,11 @@ WELL_FORMED = st.builds(
 REPETITIVE = st.just("<a/>")          # 100% accepted, tests nothing
 DEGENERATE = st.just("")              # near-empty output
 
+# A whole "grammar" of three documents. Looks healthy on every ratio -- 100%
+# accepted, 3 distinct out of 3 sampled -- because Hypothesis exhausts the
+# space and the sample shrinks with it.
+TINY_SPACE = st.builds(lambda t: f"<{t}/>", t=st.sampled_from(["a", "b", "item"]))
+
 
 def test_passes_a_varied_well_formed_generator():
     result = validate_strategy(WELL_FORMED, HARNESS)
@@ -61,6 +66,21 @@ def test_catches_a_repetitive_generator_despite_full_acceptance():
     assert any("distinct" in r for r in result.reasons)
 
 
+def test_catches_a_generator_whose_space_is_exhausted():
+    """The failure that hides behind good-looking ratios.
+
+    Every proportion this generator reports is perfect. Only comparing the
+    sample it produced against the sample that was asked for reveals that its
+    entire language is three documents.
+    """
+    result = validate_strategy(TINY_SPACE, HARNESS)
+    assert result.acceptance_rate == 1.0
+    assert result.distinct == result.sampled, "premise: no repeats within the sample"
+    assert result.sampled < result.requested, "premise: Hypothesis ran out"
+    assert not result.passed
+    assert any("exhausted" in r for r in result.reasons)
+
+
 def test_catches_a_degenerate_generator():
     result = validate_strategy(DEGENERATE, HARNESS)
     assert not result.passed
@@ -84,3 +104,14 @@ def test_a_crash_does_not_fail_the_gate():
     assert not any("accepted" in r for r in result.reasons), (
         "a crashing generator must not be failed for low acceptance"
     )
+
+
+if __name__ == "__main__":
+    # So `python tests/this_file.py` runs the tests rather than importing them
+    # and silently exiting. `pytest` and `python -m pytest` remain the normal
+    # ways in; this is just for when you reach for the file directly.
+    import sys
+
+    import pytest
+
+    sys.exit(pytest.main([__file__, "-q"]))

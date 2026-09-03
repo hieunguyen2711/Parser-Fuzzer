@@ -24,6 +24,8 @@ from pathlib import Path
 
 from fuzzer.examples import draw_examples
 from fuzzer.runner import Outcome, run_once
+from fuzzer.strategy_io import ExtractionError
+from fuzzer.strategy_io import load_strategy as file_strategy
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_HARNESS = ROOT / "build" / "harness"
@@ -64,9 +66,25 @@ def show(label: str, data: bytes, harness, width: int) -> Outcome:
 
 
 def load_strategy(spec: str):
-    """Load `package.module:ATTRIBUTE`."""
+    """Load `package.module:ATTR`, or a path to a .py file.
+
+    The file form matters for generated strategies: they land wherever the
+    runner or `fuzzer.extract` put them, which is often outside the import
+    path (report/iterations/, a scratch directory). Requiring them to be
+    importable would mean moving a file before it can be looked at, and the
+    whole point is to look at it before trusting it.
+    """
+    path = Path(spec.split(":", 1)[0])
+    if path.suffix == ".py" or path.exists():
+        attr = spec.split(":", 1)[1] if ":" in spec else "STRATEGY"
+        if not path.exists():
+            raise SystemExit(f"no such file: {path}")
+        return file_strategy(path, attr)
+
     if ":" not in spec:
-        raise SystemExit(f"strategy must look like 'module:NAME', got {spec!r}")
+        raise SystemExit(
+            f"strategy must be 'module:NAME' or a path to a .py file, got {spec!r}"
+        )
     module_name, attr = spec.split(":", 1)
     return getattr(importlib.import_module(module_name), attr)
 
@@ -113,9 +131,23 @@ def main() -> int:
     elif args.mode == "strategy":
         if not args.value:
             raise SystemExit("give a strategy, e.g. fuzzer.strategies.baseline:BASELINE")
-        strategy = load_strategy(args.value)
+        try:
+            strategy = load_strategy(args.value)
+        except ExtractionError as exc:
+            # A generated module that will not even import. Report it as the
+            # finding it is, rather than as a traceback from inside argparse.
+            print(f"\nSTRATEGY DID NOT LOAD\n  {exc}")
+            return 1
         print(f"\n{args.value}  ({args.count} draws, seed={args.seed})")
-        for i, example in enumerate(draw_examples(strategy, args.count, args.seed)):
+        try:
+            examples = draw_examples(strategy, args.count, args.seed)
+        except Exception as exc:
+            # Imports fine, but blows up while generating -- a different and
+            # more common failure than a bad import, and worth naming as such.
+            print(f"\nSTRATEGY FAILED WHILE GENERATING\n  "
+                  f"{type(exc).__name__}: {str(exc).splitlines()[0][:200]}")
+            return 1
+        for i, example in enumerate(examples):
             data = example if isinstance(example, bytes) else str(example).encode(
                 "utf-8", errors="surrogatepass"
             )

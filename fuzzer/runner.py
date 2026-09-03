@@ -34,6 +34,20 @@ SANITIZER_MARKERS = (
     "runtime error:",
 )
 
+# Lines the harness itself writes. They must be excluded before scanning for
+# sanitizer markers, because they quote the parser's message, which quotes the
+# INPUT -- and the input is attacker-controlled in the most literal sense: we
+# generate it. A document whose element name is "AddressSanitizer" produces
+#   reject: Mismatched close tag </b> under parent <AddressSanitizer>
+# on a perfectly clean exit-2 rejection. Scanning the whole of stderr scores
+# that as a crash, and the campaign reports a bug that does not exist.
+#
+# This is not hypothetical. Hypothesis mines string constants out of local
+# modules and feeds them into generated text, so it injects the contents of
+# this very tuple into documents. The first 40-example run produced a document
+# containing "LeakSanitizer".
+HARNESS_PREFIXES = ("reject:", "diag:", "harness:")
+
 
 class Outcome(Enum):
     """What one run of the harness did.
@@ -87,6 +101,21 @@ def sanitizer_env() -> dict[str, str]:
     return env
 
 
+def _sanitizer_spoke(stderr: str) -> bool:
+    """True if a sanitizer wrote to stderr -- ignoring the harness's own lines.
+
+    A sanitizer report is written by the runtime and never carries one of our
+    prefixes, so dropping those lines cannot hide a real finding. It only
+    removes the echoed input that would otherwise impersonate one.
+    """
+    for line in stderr.splitlines():
+        if line.startswith(HARNESS_PREFIXES):
+            continue
+        if any(marker in line for marker in SANITIZER_MARKERS):
+            return True
+    return False
+
+
 def _decode(raw: bytes | None) -> str:
     # Sanitizer output is ASCII, but the parser may echo fragments of a
     # deliberately malformed input, so never assume valid UTF-8.
@@ -137,7 +166,7 @@ def run_once(
     if rc < 0:
         return RunResult(Outcome.CRASHED, None, -rc, stderr, duration, False)
 
-    if any(marker in stderr for marker in SANITIZER_MARKERS):
+    if _sanitizer_spoke(stderr):
         return RunResult(Outcome.CRASHED, rc, None, stderr, duration, False)
 
     if rc == 0:

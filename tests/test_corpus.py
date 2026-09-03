@@ -66,3 +66,14 @@ def test_accept_with_diagnostic_counts_as_accepted():
     assert result.outcome is Outcome.ACCEPTED
     assert result.stderr.startswith("diag:")
     assert "control character" in result.stderr
+
+
+if __name__ == "__main__":
+    # So `python tests/this_file.py` runs the tests rather than importing them
+    # and silently exiting. `pytest` and `python -m pytest` remain the normal
+    # ways in; this is just for when you reach for the file directly.
+    import sys
+
+    import pytest
+
+    sys.exit(pytest.main([__file__, "-q"]))

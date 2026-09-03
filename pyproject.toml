@@ -1,0 +1,27 @@
+# Minimal packaging metadata, present for one reason: so `fuzzer` can be
+# installed into the venv in editable mode. That makes `import fuzzer` resolve
+# from any directory and any invocation -- including `python tests/foo.py`,
+# which fails otherwise because running a file directly puts only that file's
+# directory on sys.path.
+#
+# Editable means the install points at this source tree, so edits take effect
+# immediately with no reinstall.
+#
+#     pip install -e .
+#
+# Runtime dependencies are deliberately NOT listed here; requirements.txt is
+# the pinned record the assignment asks for, and duplicating them would let
+# the two drift apart.
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "parser-fuzzer"
+version = "0.1.0"
+description = "Grammar-based agentic fuzzer for the mxml XML parser"
+requires-python = ">=3.11"
+
+[tool.setuptools]
+packages = ["fuzzer", "fuzzer.strategies"]

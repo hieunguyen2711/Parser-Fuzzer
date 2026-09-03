@@ -22,6 +22,14 @@ catches only one:
   DEGENERATE     -- everything is empty or near-empty. Cheap to produce,
                     passes some checks, exercises nothing.
 
+  EXHAUSTED      -- the strategy has so few possible outputs that Hypothesis
+                    runs out before the sample is full. This one hides from
+                    the distinctness check, because that check is a fraction
+                    of the sample and the sample itself shrank: a generator
+                    with exactly three possible documents scores 3 distinct
+                    out of 3 and looks perfect. Comparing what was drawn
+                    against what was asked for is what catches it.
+
 A crash during validation is NOT a failure. It is the point of the exercise,
 and it is reported upward rather than swallowed.
 """
@@ -52,6 +60,7 @@ class Validation:
     harness_errors: int = 0
     distinct: int = 0
     sampled: int = 0
+    requested: int = 0
     mean_bytes: float = 0.0
     sample_rejections: list[str] = field(default_factory=list)
     crashing_input: bytes | None = None
@@ -65,7 +74,10 @@ class Validation:
         """Compact enough to paste into a refine prompt."""
         lines = [
             f"GENERATOR CHECK: {'PASS' if self.passed else 'FAIL'}",
-            f"sampled {self.sampled}: {self.accepted} accepted, "
+            f"sampled {self.sampled}"
+            + (f" (of {self.requested} asked for -- space exhausted)"
+               if self.requested and self.sampled < self.requested else "")
+            + f": {self.accepted} accepted, "
             f"{self.rejected} rejected, {self.crashed} crashed",
             f"acceptance {self.acceptance_rate:.0%}, "
             f"{self.distinct} distinct outputs, mean {self.mean_bytes:.0f} bytes",
@@ -102,6 +114,7 @@ def validate_strategy(
         return Validation(passed=False, reasons=["strategy produced no examples"])
 
     result = Validation(passed=True, sampled=len(payloads))
+    result.requested = sample_size
     result.distinct = len(set(payloads))
     result.mean_bytes = sum(len(p) for p in payloads) / len(payloads)
 
@@ -131,6 +144,12 @@ def validate_strategy(
             f"only {result.acceptance_rate:.0%} of documents were accepted "
             f"(need {min_acceptance:.0%}); the parser is refusing them at the "
             f"front door, so the generator is testing the error path only"
+        )
+    if result.sampled < sample_size:
+        result.reasons.append(
+            f"Hypothesis exhausted the strategy after {result.sampled} of "
+            f"{sample_size} examples; the generator can only produce a handful "
+            f"of distinct documents, so it covers almost none of the grammar"
         )
     if result.distinct < max(2, int(len(payloads) * MIN_DISTINCT_FRACTION)):
         result.reasons.append(
