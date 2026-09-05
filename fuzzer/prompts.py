@@ -88,6 +88,10 @@ Requirements on the code you return:
    templates. A flattened generator cannot produce the depth distribution the
    grammar implies, and the whole point of starting from a grammar is lost.
    Bound the depth (roughly 1-6 is useful here) so generation stays fast.
+   The base case must be a REAL minimal element with a freshly drawn name,
+   e.g. `<{name}/>`, never a fixed placeholder like `st.just('<base/>')`. A
+   literal placeholder leaks the same dummy tag into output over and over and
+   wastes the run.
 
 2. ENFORCE IN CODE WHAT THE GRAMMAR CANNOT EXPRESS. Three of mxml's rules are
    not context-free, so the .g4 files below do not capture them and you must:
@@ -103,6 +107,14 @@ Requirements on the code you return:
    at the first byte never reach the tree-building and accessor code where
    memory-safety bugs live. Make the malformed fraction a module-level
    constant so it can be tuned later.
+
+   Keep the WELL-FORMED core clean so it actually parses: bias element and
+   attribute names toward ASCII (`[A-Za-z_][A-Za-z0-9_.-]*`), and keep text
+   and attribute values free of raw control characters. The risky material --
+   raw control characters, lone surrogates, exotic or out-of-range codepoints,
+   unusual Unicode name characters -- belongs to the deliberate malformed/edge
+   minority in requirement 4, NOT sprinkled through every document. Spreading
+   it everywhere is what drags acceptance below the target band.
 
 4. COVER THESE EDGE CASES EXPLICITLY, each reachable with non-trivial
    probability:
@@ -123,6 +135,49 @@ Requirements on the code you return:
    import or call `random`, do not use the clock, do not read files or the
    network. Anything else breaks shrinking, and an unshrinkable crash is a
    much weaker bug report.
+"""
+
+
+# The Hypothesis API mistakes below were each made by a prior generation of this
+# same prompt and had to be hand-corrected before the module would even load.
+# Naming them explicitly is far cheaper than paying an iteration to discover
+# them again. Every item is a real fix, not a hypothetical.
+HYPOTHESIS_API = """\
+HYPOTHESIS API -- avoid these specific mistakes. Every one of them has been
+made before and stopped the module from loading or running:
+
+  - Strategies do NOT support `+`. To join two generated strings, use
+    `st.tuples(a, b).map("".join)`. `a | b` means "either a or b", not
+    "a followed by b"; there is no operator for concatenation.
+  - `@st.composite` turns a function into a strategy FACTORY, not a strategy.
+    You must CALL it: write `st_thing()` inside `st.one_of(...)` or a `|`
+    chain, never a bare `st_thing`.
+  - `st.recursive(base, extend, max_leaves=N)` -- the size bound is
+    `max_leaves`. There is NO `max_depth` argument.
+  - `st.booleans()` takes NO weighting argument -- no `average_value`, no `p`.
+    For a biased coin write a helper, e.g.
+    `st.floats(0, 1).map(lambda x: x < p)` or
+    `st.integers(0, 999).map(lambda n: n < round(p * 1000))`.
+  - `st.integers(min_value=..., max_value=...)` -- there is no `max_size` on
+    integers; `max_size` belongs to `st.text`/`st.lists`.
+  - `.filter(pred)` returns a NEW strategy; it does not filter an
+    already-drawn value. Write `draw(s.filter(pred))`, never
+    `draw(s).filter(pred)`.
+  - There is no `st.shuffled`. To reorder a list use
+    `draw(st.permutations(items))` and USE the returned list.
+  - Inside an `@st.composite` function, every generated value must come
+    through `draw(...)`. A bare strategy object used as if it were its value
+    is always a bug.
+  - There is no `st.weighted_choices`, no `st.weighted`, and no `weights=`
+    argument on `st.sampled_from`. To choose WITH weights, draw and branch
+    yourself: pick `items[draw(st.integers(0, len(items) - 1))]` for a uniform
+    choice, or map a `draw(st.integers(0, 999))` onto cumulative weight
+    thresholds for a biased one.
+  - A built strategy is NOT callable. `st.recursive(...)`, `st.text()`,
+    `st.one_of(...)` and the like each evaluate to a strategy OBJECT; get a
+    value from it with `draw(s)`, never `s()`. Only a function you decorated
+    with `@st.composite` is meant to be called. The error
+    `'...Strategy' object is not callable` always means you wrote `s()`.
 """
 
 
@@ -166,6 +221,83 @@ needs lexer modes.
 {BEHAVIOR_NOTES}
 ===== REQUIREMENTS =====
 {HARD_REQUIREMENTS}
+===== HYPOTHESIS API PITFALLS =====
+{HYPOTHESIS_API}
+===== OUTPUT =====
+{OUTPUT_CONTRACT}"""
+
+
+# Iterations 2-5 (assignment Step 4.4). Unlike the seed, the refine prompt has
+# real numbers to react to, so it front-loads the LAST run's behavior and the
+# previous module rather than the grammar -- the grammar's structure is already
+# embedded in that module, and re-sending both .g4 files every iteration would
+# waste the token budget the loop is trying to preserve. The mxml behavior notes
+# and the Hypothesis API pitfalls DO carry over: they are the two things the
+# model still cannot derive from its own previous output.
+REFINE_INTRO = """\
+You already wrote a Hypothesis strategy that generates XML documents for the
+mxml C library. Below is how your PREVIOUS version actually behaved when its
+output was fed to mxml, then the previous module itself. Revise it.
+
+The goal is NOT 100% acceptance. Aim for 70-85% of documents accepted: a
+generator that emits only `<a/>` scores 100% and tests nothing, so a deliberate
+malformed minority is wanted. What matters just as much is that the ACCEPTED
+documents VARY -- in nesting depth, number of attributes, and the mix of text,
+child elements, CDATA, comments, and references -- because variety, not raw
+acceptance, is what drives the parser into new code.
+
+Do NOT regress. The score history below shows the best you have reached; the
+module shown to you is the last one that WORKED. Change it incrementally. If a
+previous edit lowered acceptance or score, that edit was wrong -- undo it and
+build on the higher-scoring version rather than layering new changes on a
+regression. A large rewrite that collapses acceptance is worse than a small,
+safe adjustment."""
+
+
+def _format_trajectory(trajectory: list) -> str:
+    """Render the score history so the model can see whether it is improving."""
+    if not trajectory:
+        return ""
+    rows = ["", "===== SCORE HISTORY SO FAR =====",
+            "  iter   score   acceptance"]
+    for iteration, score, acceptance in trajectory:
+        rows.append(f"  {iteration:<5d}  {score:>5.2f}   {acceptance:>7.0%}")
+    rows.append(
+        "(higher score is better: it rewards landing in the 70-85% acceptance "
+        "band AND producing structurally varied documents, and penalises both "
+        "over-rejection and monotonous output.)")
+    return "\n".join(rows)
+
+
+def refine_prompt(prev_code: str, feedback: str, trajectory: list) -> str:
+    """Assemble an iteration 2-5 prompt from the last run's behavior.
+
+    `feedback` is the Python-computed briefing (validate.brief() + summarize()),
+    so no separate LLM "optimizer" call is spent producing the critique. The two
+    PromptAgent framings -- reflect on the error, then transition to a new prompt
+    -- are folded into this single message to stay within the call budget.
+    """
+    return f"""\
+{REFINE_INTRO}
+
+===== HOW YOUR LAST STRATEGY BEHAVED =====
+{feedback}
+{_format_trajectory(trajectory)}
+
+===== HOW mxml DIFFERS FROM THE FORMAL GRAMMAR (unchanged) =====
+{BEHAVIOR_NOTES}
+===== YOUR PREVIOUS STRATEGY (revise this whole module) =====
+```python
+{prev_code}
+```
+
+===== WHAT TO DO =====
+Diagnose, from the numbers above, WHY documents were rejected or why output was
+repetitive -- then rewrite the module to fix precisely that, keeping the parts
+that already worked. Return the complete revised module, not a diff.
+
+===== HYPOTHESIS API PITFALLS =====
+{HYPOTHESIS_API}
 ===== OUTPUT =====
 {OUTPUT_CONTRACT}"""
 
